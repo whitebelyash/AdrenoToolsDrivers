@@ -7,6 +7,8 @@ These builds are based on https://github.com/whitebelyash/mesa-unified repositor
 
 The `turnip-gen8-kpfe` variant is a stability-tuned build for the AYANEO KONKR Pocket Fit Elite (Snapdragon 8 Elite / Adreno 830): sysmem rendering is forced at the device level (GMEM on A830 causes write page faults), KGSL timeline sync is included, and asserts are compiled out. See [docs/KPFE.md](docs/KPFE.md) for the full research notes, build/install instructions and tuning flags.
 
+There is also a `turnip-gen8-kpfe-gmem` **experiment** variant that keeps GMEM (tiled) rendering enabled on A830 with retuned CCU cache windows — potentially much faster in Eden and native games if the page-fault theory holds. KPFE only (built with `-mcpu=oryon-1`); details and runtime tuning knobs in [docs/KPFE.md](docs/KPFE.md).
+
 
 Old README:
 <details>

@@ -7,10 +7,11 @@ on:
         description: 'Version to build'
         required: true
         type: string
-  # Auto-build on pushes to the KPFE development branch (version 0.<run number>)
+  # Auto-build on pushes to the KPFE development branches (version 0.<run number>)
   push:
     branches:
       - claude/qualcomm-8xx-kpfe-drivers-yscmsa
+      - claude/pocket-fit-elite-perf-ai9wi2
 
 jobs:
   build_kpfe_turnip:
@@ -19,7 +20,7 @@ jobs:
       contents: write
     env:
       BUILD_VERSION: ${{ inputs.version || format('0.{0}', github.run_number) }}
-      BUILD_TARGETS: turnip-gen8-kpfe
+      BUILD_TARGETS: turnip-gen8-kpfe turnip-gen8-kpfe-gmem
     steps:
     - name: Checkout repo
       uses: actions/checkout@v3
@@ -49,11 +50,14 @@ jobs:
           * Fixed a broken A830 chip-id check that incorrectly applied A8XX shader workarounds to every GPU.
           * Built with `-Db_ndebug=true` so stray driver asserts can't abort your game.
 
+          Two zips are attached:
+          * `a8xx-turnip-gen8-kpfe` — **stable**: sysmem rendering forced on A830 (the build described above). Also works on other A8XX devices.
+          * `a8xx-turnip-gen8-kpfe-gmem` — **GMEM experiment, KPFE ONLY**: GMEM (tiled) rendering stays enabled, with retuned CCU cache windows (A825/A829-style instead of the oversized a8xx_gen1 defaults suspected of causing the write page faults). The sysmem depth-cache window is shrunk the same way, which may also help sysmem artifacts (e.g. TOTK black-square flashes). Compiled with `-mcpu=oryon-1`, so it can crash on non-Snapdragon-8-Elite SoCs. Expect the best performance in Eden and native games if it works; please report faults/glitches. See docs/KPFE.md for the runtime tuning knobs (`FD_DEV_FEATURES`).
+
           Notes:
           * Install with an AdrenoTools-compatible app/emulator (see repo README).
           * Some games refuse to run on Qualcomm GPUs — spoof as Steam Deck with `TU_DEBUG=deck_emu`.
           * Disable DXVK_HUD if you see weird black artifacts.
-          * This zip also works on other A8XX devices, but GMEM is only disabled on A830; other GPUs behave like the regular sync build.
 
           >[!WARNING]
           > Please don't report issues to Mesa, PLEASE
@@ -62,3 +66,4 @@ jobs:
         name: Turnip KPFE v${{ env.BUILD_VERSION }}
         files: |
            /tmp/a8xx-turnip-gen8-kpfe-V${{ env.BUILD_VERSION }}.zip
+           /tmp/a8xx-turnip-gen8-kpfe-gmem-V${{ env.BUILD_VERSION }}.zip

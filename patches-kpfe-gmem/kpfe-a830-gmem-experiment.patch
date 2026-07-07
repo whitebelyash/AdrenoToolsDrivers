@@ -1,0 +1,48 @@
+diff --git a/src/freedreno/common/freedreno_devices.py b/src/freedreno/common/freedreno_devices.py
+index f910046..e328783 100644
+--- a/src/freedreno/common/freedreno_devices.py
++++ b/src/freedreno/common/freedreno_devices.py
+@@ -1419,7 +1419,29 @@ add_gpus([
+         GPUId(chip_id=0x44050001, name="Adreno (TM) 830"), # KGSL
+     ], A6xxGPUInfo(
+         CHIP.A8XX,
+-        [a7xx_base, a7xx_gen3, a8xx_base, a8xx_gen1],
++        [a7xx_base, a7xx_gen3, a8xx_base, a8xx_gen1, GPUProps(
++            # KPFE GMEM experiment: A830 is the only gen8 part with no
++            # per-GPU CCU cache tuning, so it inherits a8xx_gen1's
++            # FULL 256K-per-CCU depth cache window. Every other gen8
++            # KGSL part (A825/A829) ships explicit, smaller windows.
++            # An oversized depth CCU window is the prime suspect for
++            # the GMEM write page faults seen on A830, so use the
++            # A825/A829 cache config here and leave GMEM (tiled)
++            # rendering enabled.
++            gmem_ccu_color_cache_fraction = CCUColorCacheFraction.HALF.value,
++            gmem_per_ccu_color_cache_size = 128 * 1024,
++            gmem_ccu_depth_cache_fraction = CCUColorCacheFraction.HALF.value,
++            gmem_per_ccu_depth_cache_size = 128 * 1024,
++
++            # Shrink the sysmem depth window the same way (A829 uses
++            # HALF 128K). If the real per-CCU cache is smaller than
++            # a8xx_gen1 assumes, this may also be behind the sysmem
++            # artifacts (e.g. black squares flashing in TOTK).
++            sysmem_ccu_color_cache_fraction = CCUColorCacheFraction.FULL.value,
++            sysmem_per_ccu_color_cache_size = 128 * 1024,
++            sysmem_ccu_depth_cache_fraction = CCUColorCacheFraction.HALF.value,
++            sysmem_per_ccu_depth_cache_size = 128 * 1024,
++        )],
+         num_ccu = 6,
+         num_slices = 3,
+         tile_align_w = 96,
+diff --git a/src/freedreno/vulkan/tu_pipeline.cc b/src/freedreno/vulkan/tu_pipeline.cc
+index 219fff5..95560b4 100644
+--- a/src/freedreno/vulkan/tu_pipeline.cc
++++ b/src/freedreno/vulkan/tu_pipeline.cc
+@@ -1747,7 +1747,7 @@ tu_pipeline_builder_compile_shaders(struct tu_pipeline_builder *builder,
+    const bool is_a810 = chip_id == 0x44010000ull;
+    const bool is_a825 = chip_id == 0x44030000ull;
+    const bool is_a829 = chip_id == 0x44030A20ull;
+-   const bool is_a830 = chip_id == 0xffff44050000 || 0x44050001;
++   const bool is_a830 = chip_id == 0xffff44050000ull || chip_id == 0x44050001ull;
+    const bool is_target_gpu = is_a810 || is_a825 || is_a829 || is_a830;
+ 
+    const bool executable_info =

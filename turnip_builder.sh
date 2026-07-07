@@ -49,6 +49,13 @@ run_all(){
 	if should_build turnip-gen8-kpfe; then
 		build_lib_for_android turnip/gen8 turnip-gen8-kpfe "patches patches-kpfe"
 	fi
+	# KPFE GMEM experiment: GMEM (tiled) rendering stays ENABLED on A830,
+	# with A825/A829-style CCU cache windows instead of the oversized
+	# a8xx_gen1 defaults (suspected cause of the GMEM write page faults).
+	# KPFE-only: compiled with -mcpu=oryon-1, not safe on older SoCs.
+	if should_build turnip-gen8-kpfe-gmem; then
+		build_lib_for_android turnip/gen8 turnip-gen8-kpfe-gmem "patches patches-kpfe-gmem"
+	fi
 	#build_lib_for_android gen8-yuck
 }
 
@@ -123,12 +130,27 @@ build_lib_for_android(){
 	export OBJCOPY=llvm-objcopy
 	export LDFLAGS="-fuse-ld=lld"
 
+	# KPFE GMEM experiment targets only the Snapdragon 8 Elite: tune codegen
+	# for its Oryon cores. Emits ARMv8.7+ instructions — will SIGILL on
+	# older SoCs, which is acceptable for this device-specific variant.
+	# -mcpu=oryon-1 needs LLVM 19+; probe the NDK clang and skip the
+	# tuning (with a warning) if it's too old rather than failing the build.
+	cpuflags=""
+	if [[ "$2" == *kpfe-gmem* ]]; then
+		if "$ndk/aarch64-linux-android$sdkver-clang" -mcpu=oryon-1 -x c -c /dev/null -o /dev/null &>/dev/null; then
+			cpuflags=", '-mcpu=oryon-1'"
+			echo "Oryon CPU tuning enabled (-mcpu=oryon-1)"
+		else
+			echo -e "$red NDK clang does not support -mcpu=oryon-1, building without CPU tuning $nocolor"
+		fi
+	fi
+
 	echo "Generating build files ..." $'\n'
 		cat <<EOF >"android-aarch64.txt"
 [binaries]
 ar = '$ndk/llvm-ar'
-c = ['ccache', '$ndk/aarch64-linux-android$sdkver-clang']
-cpp = ['ccache', '$ndk/aarch64-linux-android$sdkver-clang++', '-fno-exceptions', '-fno-unwind-tables', '-fno-asynchronous-unwind-tables', '--start-no-unused-arguments', '-static-libstdc++', '--end-no-unused-arguments']
+c = ['ccache', '$ndk/aarch64-linux-android$sdkver-clang'$cpuflags]
+cpp = ['ccache', '$ndk/aarch64-linux-android$sdkver-clang++'$cpuflags, '-fno-exceptions', '-fno-unwind-tables', '-fno-asynchronous-unwind-tables', '--start-no-unused-arguments', '-static-libstdc++', '--end-no-unused-arguments']
 c_ld = '$ndk/ld.lld'
 cpp_ld = '$ndk/ld.lld'
 strip = '$ndk/llvm-strip'
@@ -183,7 +205,10 @@ EOF
 	echo "Making the archive"
 	pkgname="A8XX Turnip v$BUILD_VERSION"
 	pkgdesc="A8xx support with some hacks. Built from $1 branch"
-	if [[ "$2" == *kpfe* ]]; then
+	if [[ "$2" == *kpfe-gmem* ]]; then
+		pkgname="KPFE Turnip v$BUILD_VERSION (A830 GMEM experiment)"
+		pkgdesc="EXPERIMENTAL build for KONKR Pocket Fit Elite ONLY: GMEM (tiled) rendering enabled on A830 with retuned CCU cache windows + KGSL timeline sync + Oryon codegen. May glitch; report results. Built from $1 branch"
+	elif [[ "$2" == *kpfe* ]]; then
 		pkgname="KPFE Turnip v$BUILD_VERSION (A830 stable)"
 		pkgdesc="Stability build for KONKR Pocket Fit Elite (Snapdragon 8 Elite / Adreno 830): forced sysmem rendering on A830 + KGSL timeline sync. Built from $1 branch"
 	fi

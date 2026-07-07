@@ -91,6 +91,77 @@ keeps the build correct on any other device it lands on.
   with two different values.
 * LTO stays disabled (historically broke these builds).
 
+## The GMEM experiment variant (`turnip-gen8-kpfe-gmem`)
+
+The stability build above buys correctness by forcing sysmem rendering,
+which costs performance — most of all in console emulators like **Eden**,
+whose tiler-friendly render passes are exactly what GMEM (tiled)
+rendering accelerates on a bandwidth- and thermal-limited handheld.
+The `turnip-gen8-kpfe-gmem` variant attacks the underlying GMEM bug
+instead of avoiding it, and is tuned for the KPFE **only**.
+
+### Why GMEM might be fixable: the CCU cache theory
+
+On gen8, the CCUs (color cache units) carve their color and depth cache
+windows out of GMEM, and the sizes/offsets are computed from per-GPU
+device-info properties (`fd6_gmem_cache.h`). In the gen8 device table,
+**A830 is the only gen8 GPU with no per-GPU CCU cache tuning** — it
+inherits the `a8xx_gen1` template defaults, including a `FULL` 256 KB
+per-CCU depth cache. Its sibling KGSL parts ship explicit, smaller
+windows (A825 and A829 both use `HALF` 128 KB for the GMEM depth cache).
+If the real A830 cache windows are smaller than the template assumes,
+CCU depth writes land outside their window during tiled rendering —
+which is precisely the observed failure: write page faults in GMEM mode.
+
+This variant (see `patches-kpfe-gmem/kpfe-a830-gmem-experiment.patch`):
+
+* keeps GMEM rendering **enabled** on A830 (no `disable_gmem`),
+* applies the A825/A829-style CCU cache windows (`HALF` 128 KB for both
+  GMEM color and depth caches),
+* shrinks the **sysmem** depth window the same way (`FULL` 256 KB →
+  `HALF` 128 KB, matching A829) — if the template overstates the real
+  cache size, this could also explain sysmem-mode artifacts such as the
+  **black squares flashing across the ground in Tears of the Kingdom**
+  seen on the v0.1 stable build,
+* includes the same KGSL timeline-sync patch and chip-id fix as the
+  stable build,
+* is compiled with `-mcpu=oryon-1` (Snapdragon 8 Elite's Oryon cores).
+  This emits ARMv8.7+ instructions: **do not install this zip on other
+  devices** — it can crash outright on older SoCs.
+
+### Testing it
+
+Install the package named **"KPFE Turnip … (A830 GMEM experiment)"**
+next to the stable one and compare per game. What to look for:
+
+* If the page faults are gone: higher and more consistent FPS (and
+  better battery) in Eden and native Android games; DXVK/Winlator
+  workloads should be roughly unchanged.
+* Whether the TOTK ground flashes are gone (they can also be checked in
+  isolation on the *stable* build — see the knobs below, the sysmem
+  window change doesn't need this build).
+* If GMEM still faults: glitchy picture / GPU hangs → keep using the
+  stable build and report what you saw.
+
+### Runtime tuning knobs (no rebuild needed)
+
+`FD_DEV_FEATURES` accepts `:`-separated `name=value` overrides for any
+device-info property, so testers can bisect the config from the launcher
+environment:
+
+| What | Setting |
+|---|---|
+| Re-enable GMEM on the **stable** build | `FD_DEV_FEATURES=disable_gmem=0` |
+| Stable build + this variant's GMEM cache config | `FD_DEV_FEATURES=disable_gmem=0:gmem_ccu_color_cache_fraction=1:gmem_per_ccu_color_cache_size=131072:gmem_ccu_depth_cache_fraction=1:gmem_per_ccu_depth_cache_size=131072` |
+| Test the TOTK-artifact theory on the **stable** build | `FD_DEV_FEATURES=sysmem_ccu_depth_cache_fraction=1:sysmem_per_ccu_depth_cache_size=131072` |
+| Revert this variant's sysmem change at runtime | `FD_DEV_FEATURES=sysmem_ccu_depth_cache_fraction=0:sysmem_per_ccu_depth_cache_size=262144` |
+| Force sysmem on this variant (A/B compare) | `TU_DEBUG=sysmem` |
+| Check if an artifact is LRZ-related (diagnostic, slow) | `TU_DEBUG=nolrz` |
+| Override the GMEM size the kernel reports | `TU_GMEM=<bytes>` |
+
+Cache-fraction values: `0` = FULL, `1` = HALF, `2` = QUARTER,
+`3` = EIGHTH/THREE_QUARTER (a8xx depth).
+
 ## Building
 
 Locally:
@@ -98,6 +169,8 @@ Locally:
 ```sh
 BUILD_VERSION=1 BUILD_TARGETS=turnip-gen8-kpfe bash ./turnip_builder.sh
 # → /tmp/a8xx-turnip-gen8-kpfe-V1.zip
+BUILD_VERSION=1 BUILD_TARGETS=turnip-gen8-kpfe-gmem bash ./turnip_builder.sh
+# → /tmp/a8xx-turnip-gen8-kpfe-gmem-V1.zip  (GMEM experiment)
 ```
 
 CI: run the **Build "turnip" KPFE** workflow (`kpfe_builder.yml`), which
