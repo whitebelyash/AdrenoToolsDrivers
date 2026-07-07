@@ -1,0 +1,58 @@
+name: Build "turnip" KPFE
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build'
+        required: true
+        type: string
+
+jobs:
+  build_kpfe_turnip:
+    runs-on: ubuntu-24.04
+    env:
+      BUILD_VERSION: ${{ inputs.version }}
+      BUILD_TARGETS: turnip-gen8-kpfe
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v3
+
+    - name: Prepare environment
+      run: |
+        sudo sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/ubuntu.sources
+        sudo apt update
+        sudo apt install build-essential flex bison glslang-tools
+        sudo apt install meson-1.5
+
+    - name: Execute build script
+      run: bash ./turnip_builder.sh
+
+    - name: Release "turnip" KPFE
+      uses: softprops/action-gh-release@v1
+      with:
+        body: |
+          KPFE Turnip Vulkan V${{ inputs.version }} — stability build for the KONKR Pocket Fit Elite
+          Built from: https://github.com/whitebelyash/mesa-unified (turnip/gen8 branch)
+
+          Target hardware: AYANEO KONKR Pocket Fit Elite — Snapdragon 8 Elite, **Adreno 830** (KGSL chip id `0x44050001`), Android 16.
+
+          What's different from the generic A8XX builds:
+          * **Sysmem rendering forced on A830.** GMEM (tiled) rendering causes write page faults and a glitchy picture on Adreno 830; this build disables it at the device level, so you don't need to set `TU_DEBUG=sysmem` in every app. Power users can re-enable GMEM for testing with `FD_DEV_FEATURES=disable_gmem=0`.
+          * **KGSL timeline sync** (Mesa MR !39751) included — probes the kernel at runtime and falls back to legacy syncobj if unsupported, improving semaphore handling for emulators.
+          * Fixed a broken A830 chip-id check that incorrectly applied A8XX shader workarounds to every GPU.
+          * Built with `-Db_ndebug=true` so stray driver asserts can't abort your game.
+
+          Notes:
+          * Install with an AdrenoTools-compatible app/emulator (see repo README).
+          * Some games refuse to run on Qualcomm GPUs — spoof as Steam Deck with `TU_DEBUG=deck_emu`.
+          * Disable DXVK_HUD if you see weird black artifacts.
+          * This zip also works on other A8XX devices, but GMEM is only disabled on A830; other GPUs behave like the regular sync build.
+
+          >[!WARNING]
+          > Please don't report issues to Mesa, PLEASE
+
+        tag_name: kpfe_v${{ inputs.version }}
+        name: Turnip KPFE v${{ inputs.version }}
+        files: |
+           /tmp/a8xx-turnip-gen8-kpfe-V${{ inputs.version }}.zip

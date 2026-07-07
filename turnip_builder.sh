@@ -1,5 +1,9 @@
 #!/bin/bash -e
 
+# The shebang's -e is ignored when CI invokes this as `bash ./turnip_builder.sh`;
+# set it explicitly so a failed download/step actually fails the build.
+set -e
+
 #Define variables
 green='\033[0;32m'
 red='\033[0;31m'
@@ -11,21 +15,40 @@ magiskdir="$workdir/turnip_module"
 ndkver="android-ndk-r29"
 ndk="$workdir/$ndkver/toolchains/llvm/prebuilt/linux-x86_64/bin"
 sdkver="34"
+# Android platform SDK for mesa's android code paths; 36 = Android 16,
+# which is what the KPFE (KONKR Pocket Fit Elite) ships with.
+platformsdk="36"
 mesasrc="https://github.com/whitebelyash/mesa-unified"
 srcfolder="mesa"
 
-clear
+clear || true
 
 #There are 4 functions here, simply comment to disable.
 #You can insert your own function and make a pull request.
+
+# Set BUILD_TARGETS to a space-separated list of variant names to build a
+# subset (e.g. BUILD_TARGETS=turnip-gen8-kpfe). Unset = build everything.
+should_build(){
+	[[ -z "$BUILD_TARGETS" || " $BUILD_TARGETS " == *" $1 "* ]]
+}
+
 run_all(){
 	echo "====== Begin building TU V$BUILD_VERSION! ======"
 	echo "Current directory: $base_workdir"
 	check_deps
 	prepare_workdir
 	# This has path slash in the branch name and thus needs some workarounds
-	build_lib_for_android turnip/gen8 turnip-gen8 
-	build_lib_for_android turnip/gen8 turnip-gen8-sync apply
+	if should_build turnip-gen8; then
+		build_lib_for_android turnip/gen8 turnip-gen8
+	fi
+	if should_build turnip-gen8-sync; then
+		build_lib_for_android turnip/gen8 turnip-gen8-sync "patches"
+	fi
+	# KPFE (KONKR Pocket Fit Elite, Snapdragon 8 Elite / Adreno 830) stability
+	# build: KGSL timeline sync + forced sysmem rendering on A830.
+	if should_build turnip-gen8-kpfe; then
+		build_lib_for_android turnip/gen8 turnip-gen8-kpfe "patches patches-kpfe"
+	fi
 	#build_lib_for_android gen8-yuck
 }
 
@@ -55,7 +78,7 @@ prepare_workdir(){
 		mkdir -p "$workdir" && cd "$_"
 
 	echo "Downloading android-ndk from google server ..." $'\n'
-		curl https://dl.google.com/android/repository/"$ndkver"-linux.zip --output "$ndkver"-linux.zip &> /dev/null
+		curl -fSs --retry 3 https://dl.google.com/android/repository/"$ndkver"-linux.zip --output "$ndkver"-linux.zip
 	echo "Exracting android-ndk ..." $'\n'
 		unzip "$ndkver"-linux.zip &> /dev/null
 
@@ -73,16 +96,17 @@ apply_patch() {
     	git apply $1
 }
 
-# $1 - real branch, $2 - escaped branch name
+# $1 - real branch, $2 - escaped branch name, $3 - optional space-separated
+# list of patch directories (relative to repo root) to apply in order
 build_lib_for_android(){
 	echo "==== Building Mesa on $1 branch ===="
 	git checkout --force origin/$1
-	if [[ "$3" == "apply" ]]; then
-		echo "Applying patches"
-		for patch in $base_workdir/patches/*; do
+	for patchdir in $3; do
+		echo "Applying patches from $patchdir"
+		for patch in "$base_workdir/$patchdir"/*; do
 			apply_patch $patch
 		done
-	fi
+	done
 	echo "Pushing TU_VERSION..."
 	echo "#define TUGEN8_DRV_VERSION \"v$BUILD_VERSION\"" > ./src/freedreno/vulkan/tu_version.h
 	#Workaround for using Clang as c compiler instead of GCC
@@ -136,17 +160,17 @@ EOF
 			--native-file "native.txt" \
 			--prefix /tmp/turnip-$2 \
 			-Dbuildtype=release \
+			-Db_ndebug=true \
 			-Dstrip=true \
 			-Dplatforms=android \
 			-Dvideo-codecs= \
-			-Dplatform-sdk-version="$sdkver" \
 			-Dandroid-stub=true \
 			-Dgallium-drivers= \
 			-Dvulkan-drivers=freedreno \
 			-Dvulkan-beta=true \
 			-Dfreedreno-kmds=kgsl \
 			-Degl=disabled \
-			-Dplatform-sdk-version=36 \
+			-Dplatform-sdk-version="$platformsdk" \
 			-Dandroid-libbacktrace=disabled \
 			--reconfigure
 
@@ -157,12 +181,18 @@ EOF
 		echo -e "$red Build failed! $nocolor" && exit 1
 	fi
 	echo "Making the archive"
+	pkgname="A8XX Turnip v$BUILD_VERSION"
+	pkgdesc="A8xx support with some hacks. Built from $1 branch"
+	if [[ "$2" == *kpfe* ]]; then
+		pkgname="KPFE Turnip v$BUILD_VERSION (A830 stable)"
+		pkgdesc="Stability build for KONKR Pocket Fit Elite (Snapdragon 8 Elite / Adreno 830): forced sysmem rendering on A830 + KGSL timeline sync. Built from $1 branch"
+	fi
 	cd /tmp/turnip-$2/lib
 	cat <<EOF >"meta.json"
 {
   "schemaVersion": 1,
-  "name": "A8XX Turnip v$BUILD_VERSION",
-  "description": "A8xx support with some hacks. Built from $1 branch",
+  "name": "$pkgname",
+  "description": "$pkgdesc",
   "author": "whitebelyash",
   "packageVersion": "1",
   "vendor": "Mesa",

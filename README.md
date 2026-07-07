@@ -3,6 +3,10 @@
 This repository holds scripts and workflow to autobuild new Turnip driver releases adapted for AdrenoTools usage.  
 These builds are based on https://github.com/whitebelyash/mesa-unified repository (turnip/gen8) to properly or improperly support some Adreno 8XX GPUs till the support reaches upstream.
 
+## KPFE (KONKR Pocket Fit Elite) build
+
+The `turnip-gen8-kpfe` variant is a stability-tuned build for the AYANEO KONKR Pocket Fit Elite (Snapdragon 8 Elite / Adreno 830): sysmem rendering is forced at the device level (GMEM on A830 causes write page faults), KGSL timeline sync is included, and asserts are compiled out. See [docs/KPFE.md](docs/KPFE.md) for the full research notes, build/install instructions and tuning flags.
+
 
 Old README:
 <details>
