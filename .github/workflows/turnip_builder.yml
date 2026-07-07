@@ -49,6 +49,7 @@ jobs:
           Adreno 810 is additionally very slow, I'm not sure if you even want to use Turnip there
           
           Notes:
+          * The `-kpfe` zip is tuned for the KONKR Pocket Fit Elite (Adreno 830): sysmem rendering is forced at the device level (no `TU_DEBUG=sysmem` needed) and KGSL timeline sync is included. See docs/KPFE.md
           * Disable DXVK_HUD if you see weird black artifacts
           * Apparently there are swizzling glitches in Eden & maybe other emulators, try increasing render scale(?)
           * Some games may require AMD/NVIDIA GPU to run and refuse to start on Qualcomm or block some features. I've included a patch to spoof as Steam Deck - use `TU_DEBUG=deck_emu`
@@ -59,3 +60,4 @@ jobs:
         files: |
            /tmp/a8xx-turnip-gen8-V${{ inputs.version }}.zip
            /tmp/a8xx-turnip-gen8-sync-V${{ inputs.version }}.zip
+           /tmp/a8xx-turnip-gen8-kpfe-V${{ inputs.version }}.zip
