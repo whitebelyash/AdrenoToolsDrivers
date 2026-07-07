@@ -48,6 +48,7 @@ jobs:
           * **Sysmem rendering forced on A830.** GMEM (tiled) rendering causes write page faults and a glitchy picture on Adreno 830; this build disables it at the device level, so you don't need to set `TU_DEBUG=sysmem` in every app. Power users can re-enable GMEM for testing with `FD_DEV_FEATURES=disable_gmem=0`.
           * **KGSL timeline sync** (Mesa MR !39751) included — probes the kernel at runtime and falls back to legacy syncobj if unsupported, improving semaphore handling for emulators.
           * Fixed a broken A830 chip-id check that incorrectly applied A8XX shader workarounds to every GPU.
+          * **On-disk shader cache enabled on Android** (both zips): Mesa normally never caches compiled shaders inside Android app sandboxes, so every emulator session recompiled everything. The driver now caches into the host app's own cache directory — the first run of a game still compiles shaders, later runs mostly don't. Disable with `MESA_SHADER_CACHE_DISABLE=true` if it misbehaves.
           * Built with `-Db_ndebug=true` so stray driver asserts can't abort your game.
 
           Two zips are attached:

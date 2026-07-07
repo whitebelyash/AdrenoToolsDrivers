@@ -47,14 +47,14 @@ run_all(){
 	# KPFE (KONKR Pocket Fit Elite, Snapdragon 8 Elite / Adreno 830) stability
 	# build: KGSL timeline sync + forced sysmem rendering on A830.
 	if should_build turnip-gen8-kpfe; then
-		build_lib_for_android turnip/gen8 turnip-gen8-kpfe "patches patches-kpfe"
+		build_lib_for_android turnip/gen8 turnip-gen8-kpfe "patches patches-kpfe-common patches-kpfe"
 	fi
 	# KPFE GMEM experiment: GMEM (tiled) rendering stays ENABLED on A830,
 	# with A825/A829-style CCU cache windows instead of the oversized
 	# a8xx_gen1 defaults (suspected cause of the GMEM write page faults).
 	# KPFE-only: compiled with -mcpu=oryon-1, not safe on older SoCs.
 	if should_build turnip-gen8-kpfe-gmem; then
-		build_lib_for_android turnip/gen8 turnip-gen8-kpfe-gmem "patches patches-kpfe-gmem"
+		build_lib_for_android turnip/gen8 turnip-gen8-kpfe-gmem "patches patches-kpfe-common patches-kpfe-gmem"
 	fi
 	#build_lib_for_android gen8-yuck
 }
@@ -136,6 +136,7 @@ build_lib_for_android(){
 	# -mcpu=oryon-1 needs LLVM 19+; probe the NDK clang and skip the
 	# tuning (with a warning) if it's too old rather than failing the build.
 	cpuflags=""
+	lto_opts=""
 	if [[ "$2" == *kpfe-gmem* ]]; then
 		if "$ndk/aarch64-linux-android$sdkver-clang" -mcpu=oryon-1 -x c -c /dev/null -o /dev/null &>/dev/null; then
 			cpuflags=", '-mcpu=oryon-1'"
@@ -143,6 +144,10 @@ build_lib_for_android(){
 		else
 			echo -e "$red NDK clang does not support -mcpu=oryon-1, building without CPU tuning $nocolor"
 		fi
+		# Thin LTO for the max-performance experiment. Full LTO
+		# historically broke these builds; thin LTO with ld.lld is a
+		# different, much more robust pipeline. Revert if CI fails.
+		lto_opts="-Db_lto=true -Db_lto_mode=thin"
 	fi
 
 	echo "Generating build files ..." $'\n'
@@ -194,6 +199,7 @@ EOF
 			-Degl=disabled \
 			-Dplatform-sdk-version="$platformsdk" \
 			-Dandroid-libbacktrace=disabled \
+			$lto_opts \
 			--reconfigure
 
 	echo "Compiling build files ..." $'\n'

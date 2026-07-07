@@ -91,6 +91,33 @@ keeps the build correct on any other device it lands on.
   with two different values.
 * LTO stays disabled (historically broke these builds).
 
+### 5. On-disk shader cache enabled on Android (both KPFE variants)
+
+Upstream Mesa ships with the disk shader cache **disabled by default on
+Android**, and even when enabled it can't find a writable directory
+inside an app sandbox (no usable `HOME`/`XDG_CACHE_HOME`). The result:
+every emulator session recompiles every pipeline from scratch — in
+shader-heavy titles (TOTK in Eden being the worst case) that's minutes
+of stutter/lockups on *every* launch, not just the first.
+
+`patches-kpfe-common/kpfe-android-shader-cache.patch` fixes both halves:
+
+* the cache is enabled by default on Android
+  (`MESA_SHADER_CACHE_DISABLE=true` turns it back off), and
+* when no cache path is set in the environment, the driver falls back to
+  the host app's own cache directory
+  (`/data/data/<package>/cache/mesa_shader_cache_db`), which is always
+  writable from inside the sandbox. Apps that already export
+  `MESA_SHADER_CACHE_DIR` (Winlator forks and friends) keep their
+  configured path.
+
+What to expect: the **first** run of a game still compiles everything
+(combine with the emulator's async-shader option — in Eden enable
+*Settings → Graphics → Use asynchronous shaders*). Subsequent runs hit
+the cache and the compile stalls largely disappear. Clearing the
+emulator app's data/cache in Android settings also clears the shader
+cache. Default cache cap is 1 GB per app.
+
 ## The GMEM experiment variant (`turnip-gen8-kpfe-gmem`)
 
 The stability build above buys correctness by forcing sysmem rendering,
@@ -123,11 +150,39 @@ This variant (see `patches-kpfe-gmem/kpfe-a830-gmem-experiment.patch`):
   cache size, this could also explain sysmem-mode artifacts such as the
   **black squares flashing across the ground in Tears of the Kingdom**
   seen on the v0.1 stable build,
-* includes the same KGSL timeline-sync patch and chip-id fix as the
-  stable build,
-* is compiled with `-mcpu=oryon-1` (Snapdragon 8 Elite's Oryon cores).
-  This emits ARMv8.7+ instructions: **do not install this zip on other
-  devices** — it can crash outright on older SoCs.
+* includes the same KGSL timeline-sync patch, shader-cache patch and
+  chip-id fix as the stable build,
+* is compiled with `-mcpu=oryon-1` (Snapdragon 8 Elite's Oryon cores)
+  and thin LTO for maximum CPU-side throughput (driver overhead matters
+  most in DXVK/FEX workloads). The CPU tuning emits ARMv8.7+
+  instructions: **do not install this zip on other devices** — it can
+  crash outright on older SoCs.
+
+### Test results so far
+
+* **v0.x (HALF/128K CCU windows): FAILED on TOTK/Eden** — the device
+  locks up as soon as shader building starts (new pipelines → new render
+  passes → GMEM path → fault/recovery loop). The first CCU guess didn't
+  fix the faults. Note that a large part of the *perceived* lockup was
+  also the missing shader cache (fixed separately, see above) — retest
+  after the cache lands before drawing final conclusions.
+
+Next diagnostics, in order of information value (all runtime, no
+rebuild — set these on the **gmem** build):
+
+1. **Shrink usable GMEM**: `TU_GMEM=1048576`. If GMEM rendering starts
+   working with only 1 MB in use, the faults are an overflow at the top
+   of GMEM (CCU/VPC carveout accounting) and we bisect upward
+   (`1572864`, `2097152`, …) to find the real limit. **If it still
+   faults at 1 MB, the CCU-overflow theory is dead** and the bug is in
+   the tiling path itself (VSC/binning), i.e. only fixable upstream.
+2. Smaller depth window: append
+   `FD_DEV_FEATURES=gmem_ccu_depth_cache_fraction=2:gmem_per_ccu_depth_cache_size=65536`
+   (QUARTER/64K).
+3. Capture the actual fault: `adb logcat -b all | grep -iE "kgsl|pagefault|fault"`
+   while reproducing — the fault IOVA and unit tell us definitively
+   which block is writing out of bounds. Please attach this to any
+   report.
 
 ### Testing it
 

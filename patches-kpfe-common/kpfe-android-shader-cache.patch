@@ -1,0 +1,57 @@
+diff --git a/src/util/disk_cache_os.c b/src/util/disk_cache_os.c
+index 66a3f5b..59d1620 100644
+--- a/src/util/disk_cache_os.c
++++ b/src/util/disk_cache_os.c
+@@ -951,6 +951,37 @@ disk_cache_generate_cache_dir(void *mem_ctx, const char *gpu_name,
+       }
+    }
+ 
++#if DETECT_OS_ANDROID
++   if (!path) {
++      /* Android app processes have neither MESA_SHADER_CACHE_DIR nor
++       * XDG_CACHE_HOME/HOME pointing anywhere writable. Fall back to the
++       * app's own cache directory, derived from the package name in
++       * /proc/self/cmdline (zygote sets it; strip any ":subprocess"
++       * suffix). access() guards against non-app processes.
++       */
++      char cmdline[256];
++      int fd = open("/proc/self/cmdline", O_RDONLY);
++      if (fd >= 0) {
++         ssize_t n = read(fd, cmdline, sizeof(cmdline) - 1);
++         close(fd);
++         if (n > 0) {
++            cmdline[n] = '\0';
++            char *colon = strchr(cmdline, ':');
++            if (colon)
++               *colon = '\0';
++            char *app_cache = ralloc_asprintf(mem_ctx, "/data/data/%s/cache",
++                                              cmdline);
++            if (access(app_cache, W_OK) == 0) {
++               path = concatenate_and_mkdir(mem_ctx, app_cache,
++                                            cache_dir_name, mkdir);
++               if (!path)
++                  return NULL;
++            }
++         }
++      }
++   }
++#endif
++
+    if (!path) {
+       char *buf;
+       size_t buf_size;
+@@ -1014,9 +1045,13 @@ disk_cache_enabled()
+     * Don't forget to also set the shader cache path to something readable
+     * and writable by the application via `mesa.shader.cache.dir`.
+     */
+-#if defined(SHADER_CACHE_DISABLE_BY_DEFAULT) || DETECT_OS_ANDROID
++#if defined(SHADER_CACHE_DISABLE_BY_DEFAULT)
+    bool disable_by_default = true;
+ #else
++   /* KPFE build: these are Vulkan-only AdrenoTools driver packages, so no
++    * EGL layer manages a blob cache for us - enable the disk cache on
++    * Android too. MESA_SHADER_CACHE_DISABLE=true still turns it off.
++    */
+    bool disable_by_default = false;
+ #endif
+    char *envvar_name = "MESA_SHADER_CACHE_DISABLE";
