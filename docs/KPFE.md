@@ -201,6 +201,14 @@ next to the stable one and compare per game. What to look for:
 
 ### Runtime tuning knobs (no rebuild needed)
 
+All of these can also be set **without root over adb** as Android system
+properties (works even in emulators with no env-var UI, e.g. Eden):
+`TU_DEBUG=x` → `adb shell setprop debug.mesa.tu.debug x`, and likewise
+`debug.mesa.tu.gmem` / `debug.mesa.fd.dev.features`. Keep property
+values under 91 chars and clear them after testing — see
+[KPFE-TESTING.md](KPFE-TESTING.md) for the full data-collection guide
+and `tools/kpfe-report.sh` for the diagnostic collector script.
+
 `FD_DEV_FEATURES` accepts `:`-separated `name=value` overrides for any
 device-info property, so testers can bisect the config from the launcher
 environment:
