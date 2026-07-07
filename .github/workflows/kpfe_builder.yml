@@ -7,12 +7,18 @@ on:
         description: 'Version to build'
         required: true
         type: string
+  # Auto-build on pushes to the KPFE development branch (version 0.<run number>)
+  push:
+    branches:
+      - claude/qualcomm-8xx-kpfe-drivers-yscmsa
 
 jobs:
   build_kpfe_turnip:
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
     env:
-      BUILD_VERSION: ${{ inputs.version }}
+      BUILD_VERSION: ${{ inputs.version || format('0.{0}', github.run_number) }}
       BUILD_TARGETS: turnip-gen8-kpfe
     steps:
     - name: Checkout repo
@@ -32,7 +38,7 @@ jobs:
       uses: softprops/action-gh-release@v1
       with:
         body: |
-          KPFE Turnip Vulkan V${{ inputs.version }} — stability build for the KONKR Pocket Fit Elite
+          KPFE Turnip Vulkan V${{ env.BUILD_VERSION }} — stability build for the KONKR Pocket Fit Elite
           Built from: https://github.com/whitebelyash/mesa-unified (turnip/gen8 branch)
 
           Target hardware: AYANEO KONKR Pocket Fit Elite — Snapdragon 8 Elite, **Adreno 830** (KGSL chip id `0x44050001`), Android 16.
@@ -52,7 +58,7 @@ jobs:
           >[!WARNING]
           > Please don't report issues to Mesa, PLEASE
 
-        tag_name: kpfe_v${{ inputs.version }}
-        name: Turnip KPFE v${{ inputs.version }}
+        tag_name: kpfe_v${{ env.BUILD_VERSION }}
+        name: Turnip KPFE v${{ env.BUILD_VERSION }}
         files: |
-           /tmp/a8xx-turnip-gen8-kpfe-V${{ inputs.version }}.zip
+           /tmp/a8xx-turnip-gen8-kpfe-V${{ env.BUILD_VERSION }}.zip
