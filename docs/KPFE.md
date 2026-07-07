@@ -153,10 +153,11 @@ This variant (see `patches-kpfe-gmem/kpfe-a830-gmem-experiment.patch`):
 * includes the same KGSL timeline-sync patch, shader-cache patch and
   chip-id fix as the stable build,
 * is compiled with `-mcpu=oryon-1` (Snapdragon 8 Elite's Oryon cores)
-  and thin LTO for maximum CPU-side throughput (driver overhead matters
-  most in DXVK/FEX workloads). The CPU tuning emits ARMv8.7+
-  instructions: **do not install this zip on other devices** — it can
-  crash outright on older SoCs.
+  for CPU-side throughput (driver overhead matters most in DXVK/FEX
+  workloads). This emits ARMv8.7+ instructions: **do not install this
+  zip on other devices** — it can crash outright on older SoCs.
+  (LTO was tried and rejected: Mesa's build system hard-errors on it,
+  upstream considers LTO builds a source of undebuggable issues.)
 
 ### Test results so far
 

@@ -135,8 +135,11 @@ build_lib_for_android(){
 	# older SoCs, which is acceptable for this device-specific variant.
 	# -mcpu=oryon-1 needs LLVM 19+; probe the NDK clang and skip the
 	# tuning (with a warning) if it's too old rather than failing the build.
+	# No LTO anywhere: mesa's meson.build hard-errors on b_lto (upstream
+	# rejects LTO builds as a source of undebuggable issues; overriding
+	# via allow-broken-lto would add miscompile risk on top of the GPU
+	# bugs we're already chasing).
 	cpuflags=""
-	lto_opts=""
 	if [[ "$2" == *kpfe-gmem* ]]; then
 		if "$ndk/aarch64-linux-android$sdkver-clang" -mcpu=oryon-1 -x c -c /dev/null -o /dev/null &>/dev/null; then
 			cpuflags=", '-mcpu=oryon-1'"
@@ -144,10 +147,6 @@ build_lib_for_android(){
 		else
 			echo -e "$red NDK clang does not support -mcpu=oryon-1, building without CPU tuning $nocolor"
 		fi
-		# Thin LTO for the max-performance experiment. Full LTO
-		# historically broke these builds; thin LTO with ld.lld is a
-		# different, much more robust pipeline. Revert if CI fails.
-		lto_opts="-Db_lto=true -Db_lto_mode=thin"
 	fi
 
 	echo "Generating build files ..." $'\n'
@@ -199,7 +198,6 @@ EOF
 			-Degl=disabled \
 			-Dplatform-sdk-version="$platformsdk" \
 			-Dandroid-libbacktrace=disabled \
-			$lto_opts \
 			--reconfigure
 
 	echo "Compiling build files ..." $'\n'
