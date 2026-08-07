@@ -24,8 +24,8 @@ run_all(){
 	check_deps
 	prepare_workdir
 	# This has path slash in the branch name and thus needs some workarounds
-	build_lib_for_android turnip/gen8 turnip
-	build_lib_for_android turnip/gen8 turnip-sync apply
+	build_lib_for_android turnip/26.2 turnip
+	build_lib_for_android turnip/26.2 turnip-sync apply
 	#build_lib_for_android gen8-yuck
 }
 
@@ -83,8 +83,6 @@ build_lib_for_android(){
 			apply_patch $patch
 		done
 	fi
-	echo "Pushing TU_VERSION..."
-	echo "#define TUGEN8_DRV_VERSION \"v$BUILD_VERSION\"" > ./src/freedreno/vulkan/tu_version.h
 	#Workaround for using Clang as c compiler instead of GCC
 	mkdir -p "$workdir/bin"
 	ln -sf "$ndk/clang" "$workdir/bin/cc"
@@ -161,8 +159,8 @@ EOF
 	cat <<EOF >"meta.json"
 {
   "schemaVersion": 1,
-  "name": "Mainline Turnip v$BUILD_VERSION",
-  "description": "Upstream Turnip driver with some hacks. Built from $1 branch",
+  "name": "Stable Turnip v$BUILD_VERSION",
+  "description": "Mesa 26.2 Turnip driver with additional GPU support. Built from $1 branch",
   "author": "whitebelyash",
   "packageVersion": "1",
   "vendor": "Mesa",
@@ -171,9 +169,9 @@ EOF
   "libraryName": "libvulkan_freedreno.so"
 }
 EOF
-zip /tmp/mainline-$2-V$BUILD_VERSION.zip libvulkan_freedreno.so meta.json
+zip /tmp/stable-$2-V$BUILD_VERSION.zip libvulkan_freedreno.so meta.json
 cd -
-if ! [ -a /tmp/mainline-$2-V$BUILD_VERSION.zip ]; then
+if ! [ -a /tmp/stable-$2-V$BUILD_VERSION.zip ]; then
 	echo -e "$red Failed to pack the archive! $nocolor"
 fi
 }
